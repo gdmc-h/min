@@ -11,6 +11,10 @@ const defaultKeybindings = {
       ipc.send('quit')
     })
 
+    keybindings.defineShortcut('newWindow', function () {
+      ipc.send('new-window')
+    })
+
     keybindings.defineShortcut('addTab', function () {
       /* new tabs can't be created in modal mode */
       if (modalMode.enabled()) {

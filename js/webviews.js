@@ -397,6 +397,7 @@ ipc.on('enter-full-screen', function () {
 ipc.on('leave-full-screen', function () {
   windowIsFullscreen = false
   webviews.resize()
+
 })
 
 webviews.bindEvent('did-start-navigation', onNavigate)

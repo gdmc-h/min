@@ -1,4 +1,5 @@
 var defaultKeyMap = {
+  newWindow: 'shift+mod+z',
   quitMin: 'mod+q',
   addTab: 'mod+t',
   addPrivateTab: 'shift+mod+p',

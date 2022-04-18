@@ -69,11 +69,32 @@ var secondaryMenu = null
 var isFocusMode = false
 var appIsReady = false
 
+const instances = []
+
 const isFirstInstance = app.requestSingleInstanceLock()
 
 if (!isFirstInstance) {
   app.quit()
   return
+}
+
+
+function generateWindow() {
+  createWindow(function (window) {
+    mainWindow.webContents.on('did-finish-load', function () {
+      // if a URL was passed as a command line argument (probably because Min is set as the default browser on Linux), open it.
+      handleCommandLineArguments(process.argv)
+
+      // there is a URL from an "open-url" event (on Mac)
+      if (global.URLToOpen) {
+        // if there is a previously set URL to open (probably from opening a link on macOS), open it
+        sendIPCToWindow(mainWindow, 'addTab', {
+          url: global.URLToOpen
+        })
+        global.URLToOpen = null
+      }
+    })
+  })
 }
 
 var saveWindowBounds = function () {
@@ -163,16 +184,16 @@ function createWindow (cb) {
       maximized: bounds.maximized
     }
 
-    createWindowWithBounds(bounds)
+    const instance = createWindowWithBounds(bounds)
 
     if (cb) {
-      cb()
+      cb(instance)
     }
   })
 }
 
 function createWindowWithBounds (bounds) {
-  mainWindow = new BrowserWindow({
+  const newWindow = new BrowserWindow({
     width: bounds.width,
     height: bounds.height,
     x: bounds.x,
@@ -197,80 +218,101 @@ function createWindowWithBounds (bounds) {
       ]
     }
   })
+  instances.push(newWindow)
+  mainWindow = newWindow
 
   // windows and linux always use a menu button in the upper-left corner instead
   // if frame: false is set, this won't have any effect, but it does apply on Linux if "use separate titlebar" is enabled
   if (process.platform !== 'darwin') {
-    mainWindow.setMenuBarVisibility(false)
+    newWindow.setMenuBarVisibility(false)
   }
 
   // and load the index.html of the app.
-  mainWindow.loadURL(browserPage)
+  newWindow.loadURL(browserPage)
 
   if (bounds.maximized) {
-    mainWindow.maximize()
+    newWindow.maximize()
 
-    mainWindow.webContents.on('did-finish-load', function () {
-      sendIPCToWindow(mainWindow, 'maximize')
+    newWindow.webContents.on('did-finish-load', function () {
+      sendIPCToWindow(newWindow, 'maximize')
     })
   }
 
-  mainWindow.on('close', function () {
-    destroyAllViews()
-    // save the window size for the next launch of the app
-    saveWindowBounds()
-  })
+  newWindow.on('close', function () {
+    const newInstances = instances.filter(w => w.id !== newWindow.id)
+    instances.splice(0, instances.length)
 
-  // Emitted when the window is closed.
-  mainWindow.on('closed', function () {
-    // Dereference the window object, usually you would store windows
-    // in an array if your app supports multi windows, this is the time
-    // when you should delete the corresponding element.
-    mainWindow = null
-    mainWindowIsMinimized = false
-  })
-
-  mainWindow.on('focus', function () {
-    if (!mainWindowIsMinimized) {
-      sendIPCToWindow(mainWindow, 'windowFocus')
+    if (newInstances.length === 0) {
+      destroyAllViews()
+      // save the window size for the next launch of the app
+      saveWindowBounds()
+    } else {
+      instances.push(...newInstances)
+      mainWindow = instances.at(-1)
     }
   })
 
-  mainWindow.on('minimize', function () {
-    sendIPCToWindow(mainWindow, 'minimize')
+  // TODO check and remove
+  // Emitted when the window is closed.
+  newWindow.on('closed', function () {
+    // Dereference the window object, usually you would store windows
+    // in an array if your app supports multi windows, this is the time
+    // when you should delete the corresponding element.
+
+      mainWindow = null
+      mainWindowIsMinimized = false
+
+  })
+
+  newWindow.on('focus', function () {
+    if (mainWindow === null) {
+      mainWindow = newWindow
+    } else {
+      const instance = instances.find(w => w.id === newWindow.id)
+      if (mainWindow.id !== instance.id) {
+        mainWindow = instance
+      }
+    }
+    if (!mainWindowIsMinimized) {
+      sendIPCToWindow(newWindow, 'windowFocus')
+    }
+  })
+
+  newWindow.on('minimize', function () {
+    sendIPCToWindow(newWindow, 'minimize')
     mainWindowIsMinimized = true
   })
 
-  mainWindow.on('restore', function () {
+  newWindow.on('restore', function () {
     mainWindowIsMinimized = false
   })
 
-  mainWindow.on('maximize', function () {
-    sendIPCToWindow(mainWindow, 'maximize')
+  newWindow.on('maximize', function () {
+    sendIPCToWindow(newWindow, 'maximize')
   })
 
-  mainWindow.on('unmaximize', function () {
-    sendIPCToWindow(mainWindow, 'unmaximize')
+  newWindow.on('unmaximize', function () {
+    sendIPCToWindow(newWindow, 'unmaximize')
   })
 
-  mainWindow.on('enter-full-screen', function () {
-    sendIPCToWindow(mainWindow, 'enter-full-screen')
+  newWindow.on('enter-full-screen', function () {
+    sendIPCToWindow(newWindow, 'enter-full-screen')
   })
 
-  mainWindow.on('leave-full-screen', function () {
-    sendIPCToWindow(mainWindow, 'leave-full-screen')
+  newWindow.on('leave-full-screen', function () {
+    sendIPCToWindow(newWindow, 'leave-full-screen')
     // https://github.com/minbrowser/min/issues/1093
-    mainWindow.setMenuBarVisibility(false)
+    newWindow.setMenuBarVisibility(false)
   })
 
-  mainWindow.on('enter-html-full-screen', function () {
-    sendIPCToWindow(mainWindow, 'enter-html-full-screen')
+  newWindow.on('enter-html-full-screen', function () {
+    sendIPCToWindow(newWindow, 'enter-html-full-screen')
   })
 
-  mainWindow.on('leave-html-full-screen', function () {
+  newWindow.on('leave-html-full-screen', function () {
     sendIPCToWindow(mainWindow, 'leave-html-full-screen')
     // https://github.com/minbrowser/min/issues/952
-    mainWindow.setMenuBarVisibility(false)
+    newWindow.setMenuBarVisibility(false)
   })
 
   /*
@@ -280,25 +322,25 @@ function createWindowWithBounds (bounds) {
   See: https://github.com/electron/electron/issues/18322
   */
   if (process.platform === 'win32') {
-    mainWindow.on('app-command', function (e, command) {
+    newWindow.on('app-command', function (e, command) {
       if (command === 'browser-backward') {
-        sendIPCToWindow(mainWindow, 'goBack')
+        sendIPCToWindow(newWindow, 'goBack')
       } else if (command === 'browser-forward') {
-        sendIPCToWindow(mainWindow, 'goForward')
+        sendIPCToWindow(newWindow, 'goForward')
       }
     })
   }
 
   // prevent remote pages from being loaded using drag-and-drop, since they would have node access
-  mainWindow.webContents.on('will-navigate', function (e, url) {
+  newWindow.webContents.on('will-navigate', function (e, url) {
     if (url !== browserPage) {
       e.preventDefault()
     }
   })
 
-  mainWindow.setTouchBar(buildTouchBar())
+  newWindow.setTouchBar(buildTouchBar())
 
-  return mainWindow
+  return newWindow
 }
 
 // Quit when all windows are closed.
@@ -313,6 +355,7 @@ app.on('window-all-closed', function () {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 app.on('ready', function () {
+
   settings.set('restartNow', false)
   appIsReady = true
 
@@ -322,22 +365,7 @@ app.on('ready', function () {
     return
   }
 
-  createWindow(function () {
-    mainWindow.webContents.on('did-finish-load', function () {
-      // if a URL was passed as a command line argument (probably because Min is set as the default browser on Linux), open it.
-      handleCommandLineArguments(process.argv)
-
-      // there is a URL from an "open-url" event (on Mac)
-      if (global.URLToOpen) {
-        // if there is a previously set URL to open (probably from opening a link on macOS), open it
-        sendIPCToWindow(mainWindow, 'addTab', {
-          url: global.URLToOpen
-        })
-        global.URLToOpen = null
-      }
-    })
-  })
-
+  generateWindow()
   mainMenu = buildAppMenu()
   Menu.setApplicationMenu(mainMenu)
   createDockMenu()
@@ -392,4 +420,8 @@ ipc.on('showSecondaryMenu', function (event, data) {
 
 ipc.on('quit', function () {
   app.quit()
+})
+
+ipc.on('new-window', function () {
+  generateWindow()
 })
