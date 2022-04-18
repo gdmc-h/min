@@ -16,6 +16,16 @@ function buildAppMenu (options = {}) {
 
   var tabTaskActions = [
     {
+      label: l('appMenuNewWindow'),
+      accelerator: getFormattedKeyMapEntry('newWindow') || 'Shift+CmdOrCtrl+Z',
+      click: function (item, window, event) {
+        // keyboard shortcuts for these items are handled in the renderer
+        if (!event.triggeredByAccelerator) {
+          electron.ipcMain.emit('new-window')
+        }
+      }
+    },
+    {
       label: l('appMenuNewTab'),
       accelerator: getFormattedKeyMapEntry('addTab') || 'CmdOrCtrl+t',
       click: function (item, window, event) {
@@ -424,6 +434,12 @@ function createDockMenu () {
     var Menu = electron.Menu
 
     var template = [
+      {
+        label: l('appMenuNewWindow'),
+        click: function (item, window) {
+          electron.ipcMain.emit('new-window')
+        }
+      },
       {
         label: l('appMenuNewTab'),
         click: function (item, window) {

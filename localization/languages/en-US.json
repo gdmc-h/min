@@ -180,6 +180,7 @@
     "settingsProxyConfigurationURL": "Configuration URL",
     /* app menu */
     "appMenuFile": "File",
+    "appMenuNewWindow": "New Window",
     "appMenuNewTab": "New Tab",
     "appMenuDuplicateTab": "Duplicate Tab",
     "appMenuNewPrivateTab": "New Private Tab",
